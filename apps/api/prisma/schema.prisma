@@ -43,6 +43,9 @@ model User {
   notifications Notification[]
   reviews       Review[]
   favorites     Favorite[]
+  // Faz-7: Chat
+  conversationsAsUser    Conversation[] @relation("ConversationUser")
+  messagesSent           Message[]       @relation("MessageSender")
 
   @@index([role])
   @@index([status])
@@ -67,6 +70,8 @@ model ServiceProvider {
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   services Service[]
+  // Faz-7: Chat
+  conversations Conversation[]
 
   @@index([status])
   @@map("service_providers")
@@ -138,6 +143,8 @@ model Service {
   reservations Reservation[]
   reviews      Review[]
   favorites    Favorite[]
+  // Faz-7: Çoklu dil
+  translations ServiceTranslation[]
 
   // A3 sonundaki zorunlu indeksler
   @@index([providerId])
@@ -238,6 +245,8 @@ model Reservation {
   coupon   Coupon?         @relation(fields: [couponId], references: [id])
   payments Payment[]
   reviews  Review[]
+  // Faz-7: Chat
+  conversation Conversation?
 
   // A3: reservations: (user_id), (service_id), (schedule_id), status
   @@index([userId])
@@ -398,4 +407,62 @@ model Favorite {
   @@id([userId, serviceId])
   @@index([serviceId])
   @@map("favorites")
+}
+
+// -----------------------------------------------------------------------------
+// HİZMET ÇEVİRİLERİ (Faz-7: çoklu dil)
+// -----------------------------------------------------------------------------
+model ServiceTranslation {
+  id           String  @id @default(uuid())
+  serviceId    String  @map("service_id")
+  locale       String  @default("tr") // "tr", "en"
+  title        String
+  description  String?
+  meetingPoint String? @map("meeting_point")
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, locale])
+  @@index([serviceId])
+  @@index([locale])
+  @@map("service_translations")
+}
+
+// -----------------------------------------------------------------------------
+// MESAJLAŞMA (Faz-7: Chat)
+// -----------------------------------------------------------------------------
+model Conversation {
+  id             String   @id @default(uuid())
+  reservationId  String   @unique @map("reservation_id")
+  userId         String   @map("user_id")
+  providerId     String   @map("provider_id")
+  lastMessageAt  DateTime @default(now()) @map("last_message_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  user         User              @relation("ConversationUser", fields: [userId], references: [id], onDelete: Cascade)
+  provider     ServiceProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  messages     Message[]
+
+  @@index([userId])
+  @@index([providerId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")
+  senderType    String   @map("sender_type") // "user" | "provider"
+  content        String
+  isRead         Boolean  @default(false) @map("is_read")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([isRead])
+  @@map("messages")
 }

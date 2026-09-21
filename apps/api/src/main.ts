@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import path from 'path';
+import { ChatGateway } from './chat/chat.gateway';
 
 async function bootstrap() {
   // Env validation — fail-fast
@@ -61,8 +62,14 @@ async function bootstrap() {
   // API prefix
   app.setGlobalPrefix(env.API_PREFIX.replace(/^\//, ''));
 
+  // Faz-7: Socket.io'yu HTTP server'a bağla (chat için)
+  const httpServer = app.getHttpServer();
+  const chatGateway = app.get(ChatGateway);
+  chatGateway.attachToServer(httpServer);
+
   await app.listen(env.PORT);
   logger.log(`🚀 API listening on http://localhost:${env.PORT}${env.API_PREFIX}`);
+  logger.log(`   Socket.io: ws://localhost:${env.PORT}/socket.io`);
   logger.log(`   Environment: ${env.NODE_ENV}`);
   logger.log(`   CORS origin: ${env.CORS_ORIGIN}`);
 }

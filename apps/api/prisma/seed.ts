@@ -512,6 +512,65 @@ async function main() {
     }
   }
 
+  // Faz-7: Demo conversation + messages (chat testi için)
+  if (antalya && kulturCat) {
+    const service1 = await prisma.service.findUnique({ where: { slug: 'antalya-eski-sehir-yuruyusu' } });
+    const customer = await prisma.user.findUnique({ where: { email: 'customer@demo.local' } });
+    const provider1 = await prisma.serviceProvider.findFirst({
+      where: { companyName: 'Antalya Kültür Turları A.Ş.' },
+    });
+    if (service1 && customer && provider1) {
+      // Confirmed veya completed rezervasyon bul
+      const reservation = await prisma.reservation.findFirst({
+        where: { userId: customer.id, serviceId: service1.id, status: 'completed' },
+      });
+      if (reservation) {
+        const existingConv = await prisma.conversation.findUnique({
+          where: { reservationId: reservation.id },
+        });
+        if (!existingConv) {
+          const conv = await prisma.conversation.create({
+            data: {
+              reservationId: reservation.id,
+              userId: customer.id,
+              providerId: provider1.id,
+            },
+          });
+          // Demo mesajlar
+          await prisma.message.createMany({
+            data: [
+              {
+                conversationId: conv.id,
+                senderId: customer.id,
+                senderType: 'user',
+                content: 'Merhaba! Tur için buluşma noktasını netleştirebilir miyiz?',
+                isRead: true,
+                createdAt: new Date(Date.now() - 86400000 * 2),
+              },
+              {
+                conversationId: conv.id,
+                senderId: provider1.userId,
+                senderType: 'provider',
+                content: 'Merhaba! Hadrian Kapısı önünde buluşacağız, sabah 10:00.',
+                isRead: true,
+                createdAt: new Date(Date.now() - 86400000 * 2 + 3600000),
+              },
+              {
+                conversationId: conv.id,
+                senderId: customer.id,
+                senderType: 'user',
+                content: 'Harika, teşekkürler! Orada olacağım.',
+                isRead: false,
+                createdAt: new Date(Date.now() - 86400000),
+              },
+            ],
+          });
+          console.log(`   Chat seed: conversation + 3 messages`);
+        }
+      }
+    }
+  }
+
   console.log('\nSeed tamamlandı.');
   console.log('Demo giriş bilgileri:');
   console.log('  Admin:    admin@turizm-pazaryeri.local / Admin123!');
