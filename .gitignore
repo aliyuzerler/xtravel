@@ -50,3 +50,7 @@ upload/
 # Test coverage
 coverage/
 .nyc_output/
+
+# Build artifacts (Faz-8)
+download/
+bun.lock
