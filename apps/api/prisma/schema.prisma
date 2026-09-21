@@ -123,6 +123,9 @@ model Service {
   status          String   @default("draft")
   rejectionReason String?  @map("rejection_reason")
   isFeatured      Boolean  @default(false) @map("is_featured")
+  // Faz-7: Yorum/ortalama puan cache (review onay/red sonrası güncellenir)
+  avgRating       Float?   @map("avg_rating")
+  reviewCount     Int      @default(0) @map("review_count")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -362,7 +365,10 @@ model Review {
   comment       String?
   // enum: pending | approved | rejected
   status        String   @default("pending")
+  // Faz-7: Yönetici red gerekçesi
+  rejectionReason String? @map("rejection_reason")
   createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   service     Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -842,3 +842,116 @@ Sonraki faz (Faz 7) için hazır:
   - Reviews + Favorites (v2 özellikleri)
   - Push notification backend (POST /api/user/device-token + push sender)
   - Mobil app build + App Store / Play Store submit
+
+---
+Task ID: faz-7-reviews-favorites
+Agent: Super Z (main)
+Task: Faz 7 — Yorum/Puan ve Favoriler (alt özellik 1+2)
+
+Work Log:
+- Schema güncellemesi:
+  * Service modeline avgRating Float? ve reviewCount Int @default(0) alanları eklendi (cache)
+  * Review modeline rejectionReason String? ve updatedAt DateTime @updatedAt eklendi
+  * Service modeline @@index([avgRating]) eklendi (puan sıralaması için)
+  * Migration: 20260921060045_faz7_reviews_favorites_avg
+
+- reviews/ modülü (apps/api/src/reviews/):
+  * dto.ts — CreateReviewDto (rating 1-5, comment ≤2000), RejectReviewDto (reason zorunlu), ReviewListQueryDto (sort: newest/highest/lowest)
+  * reviews.service.ts:
+    - createReview: completed reservation kontrolü (yoksa 403 ROLE_FORBIDDEN), unique constraint (aynı hizmete 1 yorum), pending status ile başlar
+    - listPublicReviews: yalnızca approved yorumlar + puan dağılımı (1-5★ sayıları) + avg/count özet
+    - listForAdmin: tüm yorumlar (status + serviceId filter)
+    - approveReview: status approved + recomputeServiceRating
+    - rejectReview: status rejected + rejectionReason + eğer onaylanmış idiyse recomputeServiceRating
+    - listMyReviews: kullanıcının kendi yorumları (her durumda)
+    - deleteMyReview: yalnızca pending/rejected silinebilir (approved silinemez)
+    - recomputeServiceRating: approved yorumlara göre avgRating + reviewCount cache güncelle
+    - computeRatingDistribution: 1-5★ sayıları (groupBy)
+  * reviews.controller.ts:
+    - POST /api/services/:id/reviews — kullanıcı (user rol)
+    - GET /api/services/:id/reviews — public, approved + summary
+    - GET /api/user/reviews — kendi yorumları
+    - DELETE /api/user/reviews/:id — kendi yorumunu sil
+    - GET /api/admin/reviews — admin, status filter
+    - PUT /api/admin/reviews/:id/approve — admin
+    - PUT /api/admin/reviews/:id/reject — admin, reason zorunlu
+
+- favorites/ modülü (apps/api/src/favorites/):
+  * favorites.service.ts:
+    - toggle: ekle/çıkar, { isFavorite: boolean } döner (optimistik UI için)
+    - isFavorite: tek hizmet kontrolü
+    - listFavoriteServiceIds: sadece ID listesi (kalp dolu kontrolü için)
+    - listForUser: tam detay (service + category + city + images + pricing + avgRating)
+  * favorites.controller.ts:
+    - POST /api/services/:id/favorite — toggle (auth)
+    - GET /api/user/favorites — favori hizmetler (detaylı)
+    - GET /api/user/favorites/ids — sadece ID listesi
+
+- app.module.ts'e ReviewsModule + FavoritesModule eklendi.
+- public.service.ts: getServiceBySlug'da avgRating + reviewCount artık default olarak geliyor (model alanları).
+
+- Seed güncellemesi (prisma/seed.ts):
+  * Demo reviews: customer 1 review + 2 sahte kullanıcı (reviewer0, reviewer1) + completed reservation + review
+  * 1 pending review (admin onayı bekleyen — pending-reviewer@demo.local)
+  * avgRating + reviewCount recompute (3 approved → avg=4.67)
+  * Demo favorite: customer → service1
+
+- WEB tarafı:
+  * app/hizmet/[slug]/detail-client.tsx (güncellendi):
+    - avgRating + reviewCount header'da göster (★ 4.7 (3 yorum))
+    - Favori kalp ikonu (breadcrumb'ta, optimistik toggle)
+    - Yorumlar bölümü: puan dağılımı grafiği (5★-1★ bar chart) + yorum listesi
+    - "+ Yorum Yaz" butonu + yıldız seçici + yorum formu
+    - Misafir kalp tıklarsa login'e redirect
+  * app/favoriler/page.tsx (new):
+    - Favori hizmet kartları grid (görsel + başlık + avgRating + fiyat)
+    - "Favoriden Çıkar" butonu (optimistik kaldırma)
+    - Empty state + misafir redirect
+
+- Doğrulama betiği apps/api/scripts/verify-faz7.js: 5 senaryo, tümü PASSED:
+  1) Yorum/Puan — completed reservation kontrolü:
+     ✓ Completed rezervasyonu olmayan → 403 ROLE_FORBIDDEN
+     ✓ Aynı hizmete 2. yorum → 409
+     ✓ Pending yorum public listede yok (count=3 expected)
+     ✓ Puan dağılımı doğru (5★=2, 4★=1)
+     ✓ avgRating cache doğru (4.67)
+  2) Admin onay/red + avgRating güncellemesi:
+     ✓ Approve → 200, status approved
+     ✓ Public listede 4 approved, count arttı (3→4)
+     ✓ avgRating güncellendi (4.67 → 4.50)
+     ✓ Reject → 200, rejectionReason kaydedildi
+     ✓ Reject sonrası 3 approved, avgRating önceki haline döndü (4.50 → 4.67)
+  3) Favoriler — toggle + list:
+     ✓ Toggle (var → yok) → isFavorite false
+     ✓ Toggle (yok → var) → isFavorite true
+     ✓ GET /user/favorites/ids → service ID listede
+     ✓ GET /user/favorites → service detaylı
+  4) Kullanıcının kendi yorumları: GET /user/reviews → 200, customer'ın yorumu var
+  5) Misafir erişim: favori toggle → 401, yorum ekleme → 401
+
+Stage Summary — Kabul kriterleri:
+  [x] Rezervasyonu olmayan kullanıcı yorum ekleyemiyor (UI'da buton var + API 403)
+  [x] Admin onayı olmadan yorum listede görünmüyor (status=pending filter)
+  [x] avg_rating onay/red sonrası doğru güncelleniyor (4.67 → 4.50 → 4.67)
+  [x] Favori toggle'ı optimistik güncelleniyor (UI hemen flip, fail olursa revert)
+  [~] AN dilinde tüm statik metinler çevrili — alt özellik 3 (çoklu dil) henüz yapılmadı
+
+Üretilen dosyalar:
+  /home/z/my-project/apps/api/prisma/schema.prisma (updated — avgRating, reviewCount, review rejectionReason)
+  /home/z/my-project/apps/api/prisma/migrations/20260921060045_faz7_reviews_favorites_avg/migration.sql (new)
+  /home/z/my-project/apps/api/src/reviews/{reviews.module,reviews.service,reviews.controller,dto}.ts (new)
+  /home/z/my-project/apps/api/src/favorites/{favorites.module,favorites.service,favorites.controller}.ts (new)
+  /home/z/my-project/apps/api/src/app.module.ts (updated — 2 yeni module)
+  /home/z/my-project/apps/api/src/public/public.service.ts (updated — avgRating/reviewCount default)
+  /home/z/my-project/apps/api/prisma/seed.ts (updated — demo reviews + favorites)
+  /home/z/my-project/apps/api/scripts/verify-faz7.js (new)
+  /home/z/my-project/scripts/run-faz7-tests.sh (new)
+  /home/z/my-project/apps/web/src/app/hizmet/[slug]/detail-client.tsx (updated — reviews + favorites UI)
+  /home/z/my-project/apps/web/src/app/favoriler/page.tsx (new)
+
+Commit önerisi: "faz-7: yorum/puan ve favoriler tamamlandı"
+
+Kalan Faz-7 alt özellikleri (sonraki commit'ler):
+  3) Çoklu dil (next-intl, EN/TR, services_translations)
+  4) Gelişmiş raporlama (sağlayıcı doluluk/iptal/aşlık + CSV export, admin kategori/şehir/komisyon)
+  5) Chat (WebSocket socket.io, rezervasyon bazlı)

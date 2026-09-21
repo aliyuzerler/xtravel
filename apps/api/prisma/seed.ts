@@ -360,6 +360,158 @@ async function main() {
   console.log(`Cities:       ${cityCount}`);
   console.log(`Categories:   ${catCount}`);
   console.log(`Settings:     ${setCount}`);
+  // Faz-7: Demo yorumlar (customer'ın tamamlanmış rezervasyonlarına)
+  if (antalya && kulturCat) {
+    const service1 = await prisma.service.findUnique({ where: { slug: 'antalya-eski-sehir-yuruyusu' } });
+    if (service1) {
+      // 2-3 demo review (approved durumda, avgRating hesaplanır)
+      const demoReviews = [
+        { rating: 5, comment: 'Harika bir turdu! Rehber çok bilgiliydi.', status: 'approved' },
+        { rating: 4, comment: 'Genel olarak güzeldi, biraz uzun oldu.', status: 'approved' },
+        { rating: 5, comment: 'Kesinlikle tavsiye ederim!', status: 'approved' },
+      ];
+      const customer = await prisma.user.findUnique({ where: { email: 'customer@demo.local' } });
+      if (customer) {
+        // customer'ın bu service'te completed reservation'ı var (seed'lerde oluşturmuştuk)
+        const completedRes = await prisma.reservation.findFirst({
+          where: { userId: customer.id, serviceId: service1.id, status: 'completed' },
+        });
+        if (completedRes) {
+          // Yalnızca bir review (unique constraint) — farklı rezervasyonlar için farklı kullanıcılar gerekir
+          // Basit demo için: customer 1 review, ek olarak 2 sahte kullanıcı oluşturalım
+          const existingReview = await prisma.review.findUnique({
+            where: { userId_serviceId: { userId: customer.id, serviceId: service1.id } },
+          });
+          if (!existingReview) {
+            await prisma.review.create({
+              data: {
+                serviceId: service1.id, userId: customer.id, reservationId: completedRes.id,
+                rating: 5, comment: 'Harika bir turdu! Rehber çok bilgiliydi.', status: 'approved',
+              },
+            });
+          }
+          // 2 sahte kullanıcı + onların completed rezervasyonu + review
+          for (let i = 0; i < 2; i++) {
+            const fakeUser = await ensureUser(
+              `reviewer${i}@demo.local`, 'Reviewer123!', `Reviewer ${i}`, 'user', 'active',
+            );
+            // Bu kullanıcının completed reservation'ı yok; review tablosunda reservationId FK zorunlu.
+            // Bu yüzden sahte bir completed reservation oluşturalım:
+            const schedule = await prisma.serviceSchedule.findFirst({
+              where: { serviceId: service1.id, startAt: { gte: new Date() } },
+            });
+            const pricing = await prisma.servicePricing.findFirst({
+              where: { serviceId: service1.id, name: 'Yetişkin' },
+            });
+            if (schedule && pricing) {
+              const existingR = await prisma.reservation.findFirst({
+                where: { userId: fakeUser.id, serviceId: service1.id },
+              });
+              if (!existingR) {
+                const fakeRes = await prisma.reservation.create({
+                  data: {
+                    reservationCode: `FAKE${i}${Date.now()}`,
+                    userId: fakeUser.id, serviceId: service1.id,
+                    scheduleId: schedule.id, pricingId: pricing.id,
+                    participantCount: 1, unitPrice: 350, totalPrice: 350,
+                    status: 'completed',
+                    contactName: `Reviewer ${i}`, contactPhone: '+90 555 000 0000',
+                    contactEmail: `reviewer${i}@demo.local`,
+                    createdAt: new Date(Date.now() - (i + 1) * 86400000 * 7),
+                    updatedAt: new Date(Date.now() - (i + 1) * 86400000 * 7),
+                  },
+                });
+                const existingRev = await prisma.review.findUnique({
+                  where: { userId_serviceId: { userId: fakeUser.id, serviceId: service1.id } },
+                });
+                if (!existingRev) {
+                  await prisma.review.create({
+                    data: {
+                      serviceId: service1.id, userId: fakeUser.id, reservationId: fakeRes.id,
+                      rating: demoReviews[i + 1].rating,
+                      comment: demoReviews[i + 1].comment,
+                      status: 'approved',
+                    },
+                  });
+                }
+              }
+            }
+          }
+          // 1 pending review (admin onayı bekleyen)
+          const pendingReviewer = await ensureUser(
+            `pending-reviewer@demo.local`, 'Reviewer123!', 'Pending Reviewer', 'user', 'active',
+          );
+          const existingPending = await prisma.reservation.findFirst({
+            where: { userId: pendingReviewer.id, serviceId: service1.id },
+          });
+          if (!existingPending) {
+            const schedule = await prisma.serviceSchedule.findFirst({
+              where: { serviceId: service1.id, startAt: { gte: new Date() } },
+            });
+            const pricing = await prisma.servicePricing.findFirst({
+              where: { serviceId: service1.id, name: 'Yetişkin' },
+            });
+            if (schedule && pricing) {
+              const pendingRes = await prisma.reservation.create({
+                data: {
+                  reservationCode: `PENDR${Date.now()}`,
+                  userId: pendingReviewer.id, serviceId: service1.id,
+                  scheduleId: schedule.id, pricingId: pricing.id,
+                  participantCount: 1, unitPrice: 350, totalPrice: 350,
+                  status: 'completed',
+                  contactName: 'Pending Reviewer', contactPhone: '+90 555 000 0000',
+                  contactEmail: 'pending-reviewer@demo.local',
+                },
+              });
+              const existingRev = await prisma.review.findUnique({
+                where: { userId_serviceId: { userId: pendingReviewer.id, serviceId: service1.id } },
+              });
+              if (!existingRev) {
+                await prisma.review.create({
+                  data: {
+                    serviceId: service1.id, userId: pendingReviewer.id, reservationId: pendingRes.id,
+                    rating: 4, comment: 'Genel olarak iyiydi ama biraz pahalı.', status: 'pending',
+                  },
+                });
+              }
+            }
+          }
+
+          // avgRating + reviewCount'u recompute et (approved yorumlara göre)
+          const aggregate = await prisma.review.aggregate({
+            where: { serviceId: service1.id, status: 'approved' },
+            _avg: { rating: true }, _count: { rating: true },
+          });
+          await prisma.service.update({
+            where: { id: service1.id },
+            data: {
+              avgRating: aggregate._avg.rating ?? null,
+              reviewCount: aggregate._count.rating ?? 0,
+            },
+          });
+          console.log(`   Reviews seed: ${await prisma.review.count()} total, ${await prisma.review.count({ where: { status: 'approved' } })} approved`);
+        }
+      }
+    }
+  }
+
+  // Faz-7: Demo favoriler
+  if (antalya && kulturCat) {
+    const service1 = await prisma.service.findUnique({ where: { slug: 'antalya-eski-sehir-yuruyusu' } });
+    const customer = await prisma.user.findUnique({ where: { email: 'customer@demo.local' } });
+    if (service1 && customer) {
+      const existingFav = await prisma.favorite.findUnique({
+        where: { userId_serviceId: { userId: customer.id, serviceId: service1.id } },
+      });
+      if (!existingFav) {
+        await prisma.favorite.create({
+          data: { userId: customer.id, serviceId: service1.id },
+        });
+        console.log(`   Favorite seed: customer -> service1`);
+      }
+    }
+  }
+
   console.log('\nSeed tamamlandı.');
   console.log('Demo giriş bilgileri:');
   console.log('  Admin:    admin@turizm-pazaryeri.local / Admin123!');

@@ -236,6 +236,7 @@ export class PublicService {
           },
           orderBy: { startAt: 'asc' },
         },
+        // Faz-7: avgRating + reviewCount zaten service modelinde
       },
     });
     if (!service) throw new NotFoundError('Hizmet');

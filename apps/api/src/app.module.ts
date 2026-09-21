@@ -10,6 +10,8 @@ import { ProviderModule } from './provider/provider.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CronModule } from './cron/cron.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { FavoritesModule } from './favorites/favorites.module';
 import {
   GlobalExceptionFilter,
   RequestLoggerMiddleware,
@@ -29,6 +31,8 @@ import { APP_FILTER } from '@nestjs/core';
     ReservationsModule,
     PaymentsModule,
     CronModule,
+    ReviewsModule,
+    FavoritesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
