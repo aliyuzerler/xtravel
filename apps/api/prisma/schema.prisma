@@ -14,7 +14,10 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
+  // @prisma/client npm workspaces tarafından root node_modules'a hoist
+  // edildiği için client çıktısını da oraya yazıyoruz. Böylece root
+  // script'leri ve apps/api script'leri aynı client'ı kullanır.
+  output   = "../../node_modules/.prisma/client"
 }
 
 datasource db {

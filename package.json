@@ -13,9 +13,11 @@
     "build:shared": "npm run build -w @turizm-pazaryeri/shared",
     "dev:api": "npm run dev -w @turizm-pazaryeri/api",
     "dev:web": "npm run dev -w @turizm-pazaryeri/web",
-    "db:migrate": "npm run migrate:dev -w @turizm-pazaryeri/api",
+    "db:migrate": "npm run migrate:dev -w @turizm-pazaryeri/api && npm run sync:prisma-client",
     "db:studio": "npm run db:studio -w @turizm-pazaryeri/api",
-    "db:generate": "npm run db:generate -w @turizm-pazaryeri/api"
+    "db:generate": "npm run db:generate -w @turizm-pazaryeri/api && npm run sync:prisma-client",
+    "sync:prisma-client": "cp -rf apps/api/node_modules/.prisma/client/* node_modules/.prisma/client/ 2>/dev/null || true",
+    "verify:faz0": "node apps/api/scripts/verify-faz0.js"
   },
   "engines": {
     "node": ">=18.18.0"

@@ -5,8 +5,9 @@
  * 3) shared paketi api ve web tarafında çözümlenebiliyor mu?
  * 4) Enum değerleri spec ile birebir aynı mı?
  *
- * NOT: Prisma client apps/api/node_modules/.prisma altında generate edildiği
- * için bu script apps/api dizininden çalıştırılmalıdır.
+ * NOT: Bu betik herhangi bir workspace'ten çalışabilir. @prisma/client npm
+ * workspaces tarafından root'a hoist edilmiştir ve generate edilen client
+ * root node_modules/.prisma/client altına kopyalanmıştır (sync:generate script).
  */
 const { PrismaClient } = require('@prisma/client');
 const path = require('path');
@@ -95,12 +96,13 @@ async function main() {
     SELECT name, tbl_name, sql FROM sqlite_master
     WHERE type='index' AND sql IS NOT NULL ORDER BY tbl_name, name;
   `;
-  // SQLite indeks SQL'ini sütun listesine çevir (basit regex)
+  // SQLite indeks SQL'ini sütun listesine çevir
   const indexMap = {};
   for (const row of idxRows) {
-    const m = /CREATE (?:UNIQUE )?INDEX "([^"]+)" ON "([^"]+)" \(([^)]+)\)/.exec(row.sql || '');
+    // Prisma SQLite çıktısı: CREATE INDEX "name" ON "table"("col1", "col2")
+    const m = /CREATE (?:UNIQUE )?INDEX "[^"]+" ON "[^"]+"[\s]*\(([^)]+)\)/.exec(row.sql || '');
     if (!m) continue;
-    const cols = m[3].split(',').map((c) => c.trim().replace(/"/g, '')).sort();
+    const cols = m[1].split(',').map((c) => c.trim().replace(/"/g, '')).sort();
     const key = `${row.tbl_name}::${cols.join(',')}`;
     indexMap[key] = row.name;
   }
