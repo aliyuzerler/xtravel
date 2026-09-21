@@ -21,6 +21,8 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   ProviderApplyDto,
+  ChangePasswordDto,
+  UpdateProfileDto,
 } from './dto';
 import { Roles } from '../common/roles.decorator';
 import { UserRole } from '@turizm-pazaryeri/shared';

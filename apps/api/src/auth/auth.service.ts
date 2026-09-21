@@ -289,6 +289,58 @@ export class AuthService {
   }
 
   // --------------------------------------------------------------------------
+  // CHANGE PASSWORD (kullanıcı giriş yapmış haldeyken)
+  // --------------------------------------------------------------------------
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundError('Kullanıcı');
+
+    // Mevcut şifre doğrula
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      throw new AuthError('Mevcut şifre hatalı', ERROR_CODES.AUTH_INVALID_CREDENTIALS);
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    // Diğer cihazlardaki tüm refresh token'ları iptal et (güvenlik)
+    this.refreshStore.revokeAllForUser(userId);
+
+    this.logger.log(`Password changed: user=${userId}`);
+    return { message: 'Şifreniz güncellendi. Diğer cihazlardan çıkış yapıldı.' };
+  }
+
+  // --------------------------------------------------------------------------
+  // UPDATE PROFILE (kullanıcı kendi ad/telefonunu günceller)
+  // --------------------------------------------------------------------------
+  async updateProfile(
+    userId: string,
+    fullName?: string,
+    phone?: string,
+  ): Promise<AuthUserResponse> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundError('Kullanıcı');
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(fullName !== undefined ? { fullName } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+      },
+      include: { provider: true },
+    });
+    return this.toAuthUser(updated);
+  }
+
+  // --------------------------------------------------------------------------
   // HELPERS
   // --------------------------------------------------------------------------
   private async issueTokens(

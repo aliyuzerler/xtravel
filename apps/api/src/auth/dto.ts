@@ -93,3 +93,27 @@ export class ProviderApplyDto {
   @MaxLength(2000)
   description?: string;
 }
+
+export class ChangePasswordDto {
+  @IsString()
+  @MinLength(1)
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8, { message: 'Yeni şifre en az 8 karakter olmalı' })
+  @MaxLength(72)
+  newPassword!: string;
+}
+
+export class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9+\-\s()]{7,20}$/, { message: 'Geçersiz telefon numarası' })
+  phone?: string;
+}
