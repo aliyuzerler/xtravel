@@ -5,3 +5,6 @@ export { RequestLoggerMiddleware } from './request-logger.middleware';
 export { Roles, ROLES_KEY } from './roles.decorator';
 export { RolesGuard, RequestUser } from './roles.guard';
 export { OwnershipGuard } from './ownership.guard';
+export { paginate, parsePagination, buildPaginatedResponse } from './paginate';
+export type { PaginateOptions, PaginateConfig } from './paginate';
+export { EmailService } from './email.service';

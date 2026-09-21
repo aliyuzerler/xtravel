@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { AdminModule } from './admin/admin.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import {
   GlobalExceptionFilter,
   RequestLoggerMiddleware,
@@ -15,6 +17,8 @@ import { APP_FILTER } from '@nestjs/core';
     PrismaModule,
     AuthModule,
     UploadsModule,
+    NotificationsModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

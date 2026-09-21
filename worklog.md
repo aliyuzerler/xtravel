@@ -195,3 +195,106 @@ Sonraki faz (Faz 2) için hazır:
   - Public endpoint'ler (cities, categories, services list/detail)
   - Provider self-service (hizmet CRUD, fiyat, takvim)
   - Kullanıcı rezervasyon öncesi stok kontrolü
+
+---
+Task ID: faz-2
+Agent: Super Z (main)
+Task: Faz 2 — Süper Admin Paneli (Web)
+
+Work Log:
+- Önceki faz teyit edildi (worklog okundu): auth, RolesGuard, UploadsModule, NotificationsModule altyapısı hazır.
+- common/paginate.ts — Standart pagination helper (parse, build, prisma için paginate() generic).
+- notifications/notifications.service.ts — Tüm modüllerin kullanacağı ortak notification servisi:
+  * create(), notifyProvider() (provider.user_id üzerinden), notifyUser()
+- admin/admin.service.ts — 8 alt bölüm:
+  * Dashboard stats: counts + monthly breakdown (son 6 ay, JS tarafında gruplama — SQLite strftime yok)
+  * Users: list+filter (role/status/search), updateStatus (ban → notification)
+  * Providers: list+filter, getDetail, approve (user status pending→active + PROVIDER_APPROVED notification),
+    reject (reason zorunlu + PROVIDER_REJECTED notification)
+  * Services: list+filter, getDetail, approve (SERVICE_APPROVED notification),
+    reject (reason zorunlu + rejectionReason kaydı + SERVICE_REJECTED notification)
+  * Categories: list, create, update (aktif hizmet varsa pasife alma engeli → 409),
+    delete (hizmet varsa silme engeli → 409)
+  * Cities: list, create, update, delete (hizmet varsa silme engeli)
+  * Settings: get (JSON parse), update (JSON.stringify)
+  * Reservations + Payments: read-only list+filter
+- admin/admin.controller.ts — Tüm endpoint'ler JwtAuthGuard + RolesGuard + @Roles(SUPER_ADMIN) ile korumalı.
+  - /admin/dashboard/stats, /admin/users (+ status), /admin/providers (+ approve/reject),
+    /admin/services (+ approve/reject), /admin/categories (CRUD), /admin/cities (CRUD),
+    /admin/settings (get/put), /admin/reservations, /admin/payments
+- app.module.ts'e AdminModule + NotificationsModule eklendi.
+- prisma/seed.ts güncellendi (idempotent upsert):
+  * 2 demo sağlayıcı: provider1@demo.local (approved, 2 hizmet), provider2@demo.local (pending)
+  * 2 demo hizmet: 1 published (Antalya Eski Şehir Yürüyüşu, 3 fiyat + 5 takvim + 2 görsel),
+    1 pending_approval (Antalya Müzesi turu)
+  * 21 demo rezervasyon + 21 captured ödeme (son 5 aya dağılmış, dashboard grafik için)
+  * Default settings: commission_rate=0.10, cancel_policy_hours=24, cancel_policy_text
+- apps/web — Next.js 14 App Router admin paneli:
+  * app/admin/layout.tsx — Korumalı layout (useEffect ile localStorage kontrol; admin değilse redirect)
+  * components/admin-ui.tsx — Card, StatCard, Table, Badge, StatusBadge, Button, PageHeader,
+    Input, SearchBar, Modal, Pagination, EmptyState, ErrorState, formatPrice, formatDate
+  * app/admin/page.tsx — /admin → /admin/dashboard redirect
+  * app/admin/dashboard/page.tsx — 5 stat kartı + 6 aylık bar chart (rezervasyon+ciro)
+  * app/admin/users/page.tsx — tablo + arama + rol/status filtreleri + ban toggle
+  * app/admin/providers/page.tsx — tablo + status filtre + detail modal + onay/red (red gerekçesi zorunlu)
+  * app/admin/services/page.tsx — tablo + status filtre + detail modal + görsel önizleme + onay/red
+  * app/admin/categories/page.tsx — tablo + create/edit modal (aktif hizmet kontrolü)
+  * app/admin/cities/page.tsx — tablo + create/edit modal
+  * app/admin/settings/page.tsx — commission_rate, cancel_policy_hours, cancel_policy_text editörleri
+  * app/admin/reservations/page.tsx — read-only tablo + status/search filter + pagination
+  * app/admin/payments/page.tsx — read-only tablo + status/search filter + refunds gösterimi
+
+Doğrulama betiği apps/api/scripts/verify-faz2.js: 8 senaryo, tümü PASSED:
+  1) Admin-only erişim: user rolünde /admin/dashboard → 403, no token → 401, admin → 200
+  2) Dashboard istatistikleri gerçek veri: 12 user, 2 provider, 21 reservation, 7350 TRY, 6 aylık breakdown
+  3) Sağlayıcı onay akışı + notification: pending provider approve → status approved + user status active + log'da "Notification created" (PROVIDER_APPROVED)
+  4) Hizmet reddetme + notification: pending service reject → status rejected + rejectionReason + log'da "Notification created" (SERVICE_REJECTED)
+  5) Kategori silme engeli: aktif hizmeti olan "Kültür Turu" kategorisi → 409 (silme ve pasife alma),
+     yeni kategori → 201 → sil → 200
+  6) Şehir + Ayarlar: 81 şehir listelendi, commission_rate=0.1 okundu, ayar güncellendi → 200
+  7) Reservations + Payments list: 20+20 kayıt, filter çalışıyor
+  8) Kullanıcı banlama: ban → 200, ban kaldır → 200, her ikisinde notification (GENERIC)
+Web tarafı: tüm 10 admin sayfası (/admin ve 9 alt sayfa) HTTP 200 dönüyor;
+Web proxy → API /admin/dashboard/stats gerçek veri döndü (12 user, 2 provider, ...).
+
+Stage Summary — Kabul kriterleri:
+  [x] Admin olmayan /admin'e giremiyor (UI redirect + API 403)
+  [x] Hizmet reddedildiğinde sağlayıcıya notification düşüyor (backend log + service callback)
+  [x] Aktif hizmeti olan kategori silinmeye çalışınca engelleniyor (409)
+  [x] Dashboard istatistikleri gerçek veriden geliyor
+  [x] Sağlayıcı onaylandığında profil durumu approved oluyor (+ user status pending→active)
+
+Önemli tasarım kararları:
+  1) NotificationsService global — provider/user/admin tüm modüllerde kullanılacak (Faz 3-4'te).
+  2) Kategori silme engeli: hem "aktif hizmet" (published/pending_approval) hem "herhangi hizmet" iki ayrı kontrol.
+     Aktif hizmet varsa pasife alınamaz; herhangi hizmet varsa silinemez (409).
+  3) Sağlayıcı onayı: hem service_providers.status='approved' hem users.status='active' (pending'den).
+     Bu sayede sağlayıcı hemen login olup hizmet girebilir (Faz 3'te).
+  4) Settings JSON serialization: SQLite'ta String kolonda JSON.stringify ile; service tarafında JSON.parse.
+  5) Web admin layout, client-side kontrol yapıyor (localStorage). SSR'da bir API çağrısı yapmak yerine,
+     istek atıldığında backend RolesGuard zaten 403 dönüyor (UI redirect ikincil güvenlik).
+  6) Seed script idempotent: upsert + existing check (code/taxNumber/slug).
+
+Üretilen/modified dosyalar:
+  /home/z/my-project/apps/api/src/common/paginate.ts (new)
+  /home/z/my-project/apps/api/src/common/index.ts (updated — paginate export)
+  /home/z/my-project/apps/api/src/notifications/{notifications.service,notifications.module}.ts (new)
+  /home/z/my-project/apps/api/src/admin/{admin.module,admin.service,admin.controller,dto}.ts (new)
+  /home/z/my-project/apps/api/src/app.module.ts (updated — AdminModule + NotificationsModule)
+  /home/z/my-project/apps/api/prisma/seed.ts (updated — demo verisi)
+  /home/z/my-project/apps/api/scripts/verify-faz2.js (new)
+  /home/z/my-project/scripts/run-faz2-tests.sh (new)
+  /home/z/my-project/apps/web/src/components/admin-ui.tsx (new)
+  /home/z/my-project/apps/web/src/app/admin/{layout,page}.tsx (new)
+  /home/z/my-project/apps/web/src/app/admin/{dashboard,users,providers,services,categories,cities,settings,reservations,payments}/page.tsx (new, 9 sayfa)
+
+Komutlar:
+  npm run db:seed        — idempotent seed (admin + 81 il + 6 kategori + demo data)
+  npm run dev:api        — API 3000
+  npm run dev:web        — Web 3001
+  bash scripts/run-faz2-tests.sh — tek komutla API+test
+
+Sonraki faz (Faz 3) için hazır:
+  - Provider self-service: hizmet CRUD 5 adımlı form, fiyat/takvim, onaya gönder
+  - Public endpoint'ler: cities, categories, services list/detail (slug)
+  - OwnershipGuard devreye girer
