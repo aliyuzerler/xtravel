@@ -7,6 +7,9 @@ import { AdminModule } from './admin/admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PublicApiModule } from './public/public.module';
 import { ProviderModule } from './provider/provider.module';
+import { ReservationsModule } from './reservations/reservations.module';
+import { PaymentsModule } from './payments/payments.module';
+import { CronModule } from './cron/cron.module';
 import {
   GlobalExceptionFilter,
   RequestLoggerMiddleware,
@@ -23,6 +26,9 @@ import { APP_FILTER } from '@nestjs/core';
     AdminModule,
     PublicApiModule,
     ProviderModule,
+    ReservationsModule,
+    PaymentsModule,
+    CronModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

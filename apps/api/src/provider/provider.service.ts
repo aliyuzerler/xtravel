@@ -606,11 +606,8 @@ export class ProviderService {
       data: { status: 'confirmed' },
     });
 
-    // Kapasiteyi artır
-    await this.prisma.serviceSchedule.update({
-      where: { id: reservation.scheduleId },
-      data: { bookedCount: { increment: reservation.participantCount } },
-    });
+    // NOT: Kapasite create sırasında (reservations.service.create) zaten artırıldı.
+    // Bu yüzden provider confirm'de tekrar artırmaya gerek yok.
 
     // Bildirim
     await this.notifications.notifyUser({
@@ -647,13 +644,11 @@ export class ProviderService {
       data: { status: 'cancelled', cancellationReason: dto.reason },
     });
 
-    // Kapasiteyi geri al
-    if (reservation.status === 'confirmed') {
-      await this.prisma.serviceSchedule.update({
-        where: { id: reservation.scheduleId },
-        data: { bookedCount: { decrement: reservation.participantCount } },
-      });
-    }
+    // Kapasiteyi geri al (create sırasında artırıldığı için her durumda decrement)
+    await this.prisma.serviceSchedule.update({
+      where: { id: reservation.scheduleId },
+      data: { bookedCount: { decrement: reservation.participantCount } },
+    });
 
     await this.notifications.notifyUser({
       userId: reservation.userId,
@@ -720,7 +715,7 @@ export class ProviderService {
         service: { select: { id: true, title: true } },
       },
     });
-    const gross = reservations.reduce((s, r) => s + r.totalPrice, 0);
+    const gross = reservations.reduce((s: number, r: any) => s + r.totalPrice, 0);
     const commission = gross * commissionRate;
     const net = gross - commission;
     return {

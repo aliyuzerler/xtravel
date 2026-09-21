@@ -244,7 +244,7 @@ export class PublicService {
     }
 
     // Kapasitesi dolu slotları hariç tut
-    const availableSchedules = service.schedules.filter((s) => s.bookedCount < s.capacity);
+    const availableSchedules = service.schedules.filter((s: any) => s.bookedCount < s.capacity);
 
     return {
       ...service,
