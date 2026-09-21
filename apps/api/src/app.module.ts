@@ -5,6 +5,8 @@ import { AuthModule } from './auth/auth.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { AdminModule } from './admin/admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PublicApiModule } from './public/public.module';
+import { ProviderModule } from './provider/provider.module';
 import {
   GlobalExceptionFilter,
   RequestLoggerMiddleware,
@@ -19,6 +21,8 @@ import { APP_FILTER } from '@nestjs/core';
     UploadsModule,
     NotificationsModule,
     AdminModule,
+    PublicApiModule,
+    ProviderModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

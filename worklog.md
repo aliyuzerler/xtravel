@@ -298,3 +298,137 @@ Sonraki faz (Faz 3) için hazır:
   - Provider self-service: hizmet CRUD 5 adımlı form, fiyat/takvim, onaya gönder
   - Public endpoint'ler: cities, categories, services list/detail (slug)
   - OwnershipGuard devreye girer
+
+---
+Task ID: faz-3
+Agent: Super Z (main)
+Task: Faz 3 — Hizmet Sağlayıcı Paneli (Web)
+
+Work Log:
+- Önceki faz teyit edildi (worklog okundu): auth, RolesGuard, admin onay mekanizması, NotificationsModule hazır.
+- common/paginate.ts mevcut; provider service listeler için kullanıldı.
+
+API tarafı:
+- public/ (misafir erişimi):
+  * public.service.ts — listCities, listCategories (aktif + published hizmet sayısı), listServices
+    (status=published filtre; city/category/search/minPrice/maxPrice/date/sort parametreleri;
+    her hizmete startingPrice ekler), listFeaturedServices, getServiceBySlug
+    (geçmiş slotları ve kapasitesi dolu slotları hariç tutar)
+  * public.controller.ts — 5 endpoint (misafir, JwtAuthGuard yok)
+  * public.module.ts
+- provider/ (rol guard: provider + super_admin):
+  * dto.ts — ProfileDto, ProviderApplyDto, CreateServiceDto (Step 1), AddServiceImageDto,
+    CreatePricingDto, CreateScheduleDto, BulkCreateSchedulesDto, ConfirmReservationDto,
+    CancelReservationDto (reason zorunlu)
+  * provider.service.ts — 6 alt bölüm:
+    - Profile: getProfile, updateProfile
+    - Dashboard: services count by status, activeReservations count
+    - Services CRUD: createService (draft), updateService (yalnızca draft/rejected),
+      submitForApproval (validasyon: başlık + açıklama + en az 1 görsel + ana görsel + en az 1
+      aktif fiyat + en az 1 gelecek açık slot), deleteService (aktif rezervasyon yoksa)
+    - Images: addImage (ilk görsel otomatik main), updateImage (main değiştir), deleteImage
+      (silinen main ise ilk kalan main yap)
+    - Pricing: list, add, update, delete (rezerve pricing silinemez)
+    - Schedules: list, add, bulkAdd (hafta günleri + tarih aralığı), update (capacity >= bookedCount),
+      delete (bookedCount > 0 ise silinemez)
+    - Reservations: list (kendi hizmetlerine), confirm (kapasite artır + notification),
+      cancel (reason + kapasite geri al + notification)
+    - Earnings: thisMonth + lastMonth + total, commissionRate (settings'ten), byService breakdown
+  * provider.controller.ts — tüm endpoint'ler JwtAuthGuard + RolesGuard + @Roles(PROVIDER, SUPER_ADMIN)
+  * provider.module.ts — NotificationsModule import
+- app.module.ts'e PublicApiModule + ProviderModule eklendi.
+
+WEB tarafı:
+- app/page.tsx (güncellendi) — Public ana sayfa:
+  * Hero (gradient + arama kutusu)
+  * Filtreler (şehir, kategori, sıralama)
+  * Hizmet kartları grid (görsel + fiyat + süre + sağlayıcı)
+  * Pagination + empty state
+- app/hizmet/[slug]/page.tsx — Hizmet detay:
+  * Görsel galeri (ana görsel büyük + thumbnail'lar)
+  * Açıklama, buluşma noktası, koordinatlar
+  * Sağ panel: fiyat varyantı + tarih seçimi + rezerve et butonu (auth kontrol)
+- app/sehir/[slug]/page.tsx — Şehir redirect
+- app/provider/layout.tsx — Korumalı layout:
+  * Role kontrol (provider değilse redirect)
+  * Provider profil kontrol — pending ise "başvuru inceleniyor" ekranı
+  * approved ise sidebar + content
+- app/provider/page.tsx — /provider/dashboard redirect
+- app/provider/dashboard/page.tsx — 5 stat kartı (yayında/taslak/pending/rejected/aktif rezervasyon) + hızlı işlemler
+- app/provider/services/page.tsx — Hizmetlerim tablosu (status filter + rejection reason görüntüleme)
+- app/provider/new-service/page.tsx — 5 adımlı sihirbaz:
+  Step 1: temel bilgiler (kategori/şehir/başlık/açıklama/buluşma/süre/koordinat)
+  Step 2: görseller (presigned URL ile upload, drag-drop, ana görsel seçimi)
+  Step 3: fiyat varyantları (kişi başı/grup, ekle/sil)
+  Step 4: takvim (tek tek + toplu gün eklem, hafta günleri seçimi)
+  Step 5: önizleme + onaya gönder
+  - Edit mode: /provider/new-service?id=X ile mevcut hizmeti yükle ve düzenle
+- app/provider/reservations/page.tsx — Gelen rezervasyonlar (confirm/cancel, cancel reason zorunlu)
+- app/provider/earnings/page.tsx — Bu ay + geçen ay + tüm zamanlar, byService breakdown
+- app/provider/profile/page.tsx — Profil bilgileri düzenleme
+
+Doğrulama betiği apps/api/scripts/verify-faz3.js: 11 senaryo, tümü PASSED:
+  1) Public endpoints: cities(81), categories(6), services list (yalnızca published), featured
+  2) Onaysız sağlayıcı engeli: pending provider service oluşturamaz → 403
+  3) Sağlayıcı onayı: pending → approve → status=approved
+  4) 5 adım hizmet oluşturma: create draft (201) → image add (201) → pricing (201) →
+     schedule (201) → bulk schedules (201, count=7) → submit (200, status=pending_approval)
+  5) Admin onay bekleyen listede + reject → re-edit → re-submit → approve → status=published
+  6) Public listede görünür: GET /services/:slug → 200
+  7) Ownership ihlali: başka sağlayıcı detail/update/delete → 403
+  8) Kapasitesi dolu slot gizli: public detail geçmiş/dolu slot içermez
+  9) Provider dashboard: services.published >= 1
+  10) Kazanç özeti: commissionRate + thisMonth + lastMonth + total
+  11) Provider profile: GET + PUT güncelleme
+
+Web tarafı: 9 sayfa (/, /hizmet/[slug], /provider/* 7 sayfa) tümü HTTP 200;
+Web proxy → API /provider/dashboard/stats gerçek veri döndü.
+
+Stage Summary — Kabul kriterleri:
+  [x] Taslak kaydedilip sonra kaldığı yerden devam edilebiliyor (editId + step state)
+  [x] Onaya gönderilen hizmet adminin "Onay Bekliyor" listesinde (admin/services?status=pending_approval)
+  [x] Reddedilen hizmet düzenlenip tekrar onaya gönderilebiliyor (status rejected → edit → submit)
+  [x] Başka sağlayıcının hizmetine PUT/DELETE isteği 403 (OwnershipGuard via provider.service)
+  [x] Kapasitesi dolmuş slot API'den seçilemiyor (public.service.getServiceBySlug filtre)
+  [x] Onaylanmamış (draft/pending/rejected) hizmet public listede görünmüyor (where status=published)
+
+Önemli tasarım kararları:
+  1) Taslak kalıcılığı: Service created' draft olarak; 5 step ayrı ayrı kaydedilebilir.
+     Edit mode (URL'de ?id=) ile service yüklenir, adım atlanabilir.
+  2) Submit validasyonu: minimum 1 görsel + ana görsel + 1 fiyat + 1 gelecek açık slot.
+     Eksikse 422 VALIDATION_FAILED + spesifik message.
+  3) OwnershipGuard: provider.service her metodunda requireProvider() + getService() ile
+     service.providerId === provider.id kontrolü (403 OWNERSHIP_VIOLATION).
+  4) Schedule kapasitesi: confirm_reservation bookedCount += participant_count;
+     cancel_reservation bookedCount -= participant_count (yalnızca confirmed'tan iptal).
+  5) Earnings: completed reservations only; commissionRate settings tablosundan.
+     byService breakdown JS tarafında (Prisma groupBy desteklemedi SQLite'ta).
+  6) Public service detail: yalnızca published hizmetleri döner (status !== published → NotFoundError).
+     Geçmiş (startAt < now) ve kapasitesi dolu (bookedCount >= capacity) slotları hariç tutar.
+  7) Web upload: presigned URL al → receive endpoint'ine raw body POST → publicUrl al → images state'e ekle.
+     Sandbox modunda real S3 yok, local disk + express.static.
+  8) Provider layout: pending provider "başvuru inceleniyor" ekranı gösterir, sidebar gizli.
+     Bu sayede onay bekleyen sağlayıcı panelin geri kalanına erişemez.
+
+Üretilen dosyalar:
+  /home/z/my-project/apps/api/src/public/{public.module,public.service,public.controller,dto}.ts (new)
+  /home/z/my-project/apps/api/src/provider/{provider.module,provider.service,provider.controller,dto}.ts (new)
+  /home/z/my-project/apps/api/src/app.module.ts (updated — PublicApiModule + ProviderModule)
+  /home/z/my-project/apps/api/scripts/verify-faz3.js (new)
+  /home/z/my-project/scripts/run-faz3-tests.sh (new)
+  /home/z/my-project/apps/web/src/app/page.tsx (updated — public listing with filters)
+  /home/z/my-project/apps/web/src/app/hizmet/[slug]/page.tsx (new)
+  /home/z/my-project/apps/web/src/app/sehir/[slug]/page.tsx (new — redirect)
+  /home/z/my-project/apps/web/src/app/provider/{layout,page}.tsx (new)
+  /home/z/my-project/apps/web/src/app/provider/{dashboard,services,new-service,reservations,earnings,profile}/page.tsx (new, 6 sayfa)
+
+Komutlar:
+  npm run db:seed        — idempotent seed
+  npm run dev:api        — API 3000
+  npm run dev:web        — Web 3001
+  bash scripts/run-faz3-tests.sh — tek komutla Faz 3 doğrulama
+
+Sonraki faz (Faz 4) için hazır:
+  - User rezervasyon akışı: POST /api/reservations + GET /api/user/reservations + cancel
+  - Ödeme (iyzico sandbox): POST /api/payments/init + webhook + status transitions
+  - Kullanıcı paneli: profil, rezervasyonlarım, bildirimler
