@@ -62,4 +62,136 @@ Stage Summary:
   /home/z/my-project/apps/mobile/package.json
 - Commit önerisi: "faz-0: veritabanı şeması ve ortak tipler tamamlandı"
 
-Sonraki faz (Faz 1) için hazır: NestJS bootstrap, JWT auth, kullanıcı kayıt/giriş.
+---
+Task ID: faz-1
+Agent: Super Z (main)
+Task: Faz 1 — Temel Altyapı ve Kimlik Doğrulama
+
+Work Log:
+- Turborepo kuruldu (turbo.json + root devDependency).
+- .env.example yazıldı; .env dolduruldu (DATABASE_URL, JWT secrets, S3 stub, rate limit config).
+- apps/api/src/env.ts: Zod şeması ile fail-fast env validation (dotenv manuel yüklenir).
+- NestJS bootstrap (apps/api/src/main.ts):
+  * helmet, cookieParser, cors (env.CORS_ORIGIN)
+  * express.static ile /uploads → local disk (sandbox S3 stub)
+  * global ValidationPipe (whitelist + transform)
+  * global API prefix (/api)
+  * trust proxy (rate limit için)
+- AppModule: PrismaModule (global), AuthModule, UploadsModule, GlobalExceptionFilter (APP_FILTER).
+- common/
+  * errors.ts        — AppError + alt sınıfları (Validation, NotFound, Auth, Forbidden, Conflict, Business, Throttler)
+  * global-exception.filter.ts — tüm hataları { success:false, message, statusCode, code?, errors? } formatına getirir
+  * response.interceptor.ts — başarılı yanıtları { success:true, data }'ya sarmalar
+  * request-logger.middleware.ts — METHOD /path → STATUS durationms (user-agent)
+  * roles.decorator.ts + roles.guard.ts — @Roles() ile RBAC
+  * ownership.guard.ts — sağlayıcı kaynaklarına ownership kontrolü (Faz 3'te kullanılacak)
+  * email.service.ts — şifre sıfırlama e-posta stub (log'a yazar)
+- auth/
+  * jwt.strategy.ts — PassportStrategy(Strategy,'jwt'); payload={sub,role,status,providerId}
+  * refresh-token.store.ts — In-memory store; token family tabanlı rotasyon;
+    revoke edilmiş token tekrar kullanılırsa tüm aile revoke edilir (token çalınma savunması)
+  * password-reset.store.ts — Tek kullanımlık token; tekrar kullanılırsa tüm kullanıcı token'ları silinir
+  * auth.service.ts — register, login, refresh (rotasyon), logout (revoke all), me,
+    forgot-password, reset-password, apply-provider
+  * auth.controller.ts — 7 endpoint; @Throttle ile rate limit (login 5/dk, register 3/dk, forgot 3/dk)
+  * guards/jwt-auth.guard.ts — Passport JWT guard
+- uploads/
+  * uploads.service.ts — presign() S3 PUT URL üretir (sandbox'ta local /api/uploads/receive endpoint'ine yönlendirir);
+    receive() local diske yazar (jpg/png/webp, 5MB max)
+  * uploads.controller.ts — POST /api/uploads/presign (auth), POST /api/uploads/receive (sandbox stub)
+- prisma/seed.ts — Idempotent:
+  * 1 admin (admin@turizm-pazaryeri.local / Admin123!)
+  * 81 Türkiye ili (slugify edilmiş: adana, adiyaman, afyonkarahisar, ...)
+  * 6 kategori (Kültür Turu, Gemi Turu, Yemek Turu, Doğa Yürüyüşü, Müze Gezisi, Şehir Turu)
+  * 2 default setting (commission_rate=0.10, cancel_policy_hours=24)
+- apps/web — Next.js 14 minimal:
+  * login + register sayfaları (client component)
+  * lib/auth.ts — localStorage token storage, apiFetch wrapper (refresh deneyen)
+  * next.config.js rewrites → /api/* → backend
+- Doğrulama betiği apps/api/scripts/verify-faz1.js: 6 senaryo, tümü PASSED:
+  1) Seed kontrolü (admin girişi 200)
+  2) Register → Login → /auth/me (id ve role eşleşmesi)
+  3) Refresh token rotasyonu (yeni token, eski token 401)
+  4) Yetkisiz erişim (token yok/bozuk → 401)
+  5) Presigned upload + receive + static fetch (hepsi 200, geçersiz tip/boyut 400)
+  6) Login rate limit (6+ istek → 429)
+
+Stage Summary — Kabul kriterleri:
+  [x] Kayıt → giriş → /auth/me akışı uçtan uca çalışıyor
+  [x] Yanlış rolle korumalı endpoint 403 dönüyor (RolesGuard mevcut; provider endpoint'leri Faz 3'te kullanılacak)
+  [x] Refresh token rotasyonu: eski refresh token 401 dönüyor
+  [x] Presigned URL ile gerçek dosya yüklenip URL dönebiliyor (sandbox stub)
+  [x] Login rate limit devrede (5/dk, 6. istek 429)
+  [x] Seed sonrası admin + 81 şehir + 6 kategori mevcut
+
+Önemli tasarım kararları:
+  1) In-memory refresh token store — Faz 5'te Redis'e taşınacak (A2'ye uygun).
+  2) In-memory password reset store — Faz 5'te Redis veya veritabanı.
+  3) S3 stub: presign URL local /api/uploads/receive endpoint'ine işaret eder;
+     üretimde @aws-sdk/client-s3 getSignedUrl(PUT) ile değiştirilecek. Controller ve DTO'lar sabit kalır.
+  4) Email stub: şifre sıfırlama linki log'a yazılır (Resend/SMTP Faz 5'te).
+  5) throttle decorator'ü v6'da syntax değişikliği gerektirir: @Throttle({ default: { ... } as any }).
+
+HTTP İstek-Yanıt Örnekleri:
+  POST /api/auth/register
+  → 201 { success:true, data:{ user:{id,email,fullName,role:'user',status:'active',providerId:null},
+                                  accessToken:'eyJ...', refreshToken:'JV8c...', expiresIn:900 } }
+
+  POST /api/auth/login
+  → 200 { success:true, data:{ user:{...}, accessToken:'...', refreshToken:'...', expiresIn:900 } }
+
+  POST /api/auth/login (yanlış şifre)
+  → 401 { success:false, message:'E-posta veya şifre hatalı', statusCode:401,
+          code:'AUTH_INVALID_CREDENTIALS' }
+
+  POST /api/auth/refresh {refreshToken}
+  → 200 { success:true, data:{ user, accessToken:'new', refreshToken:'new', expiresIn } }
+
+  POST /api/auth/refresh (eski token)
+  → 401 { success:false, message:'Geçersiz refresh token', statusCode:401, code:'AUTH_TOKEN_INVALID' }
+
+  GET /api/auth/me (Authorization: Bearer <token>)
+  → 200 { success:true, data:{ id,email,fullName,role,status,providerId } }
+
+  GET /api/auth/me (yetkisiz)
+  → 401 { success:false, message:'Unauthorized', statusCode:401 }
+
+  POST /api/uploads/presign {filename, contentType, size, folder}
+  → 200 { success:true, data:{ key, uploadUrl, publicUrl, method:'PUT', expiresInSeconds:600, headers:{'Content-Type'} } }
+
+  POST /api/uploads/presign (application/pdf)
+  → 400 { success:false, message:'Bad Request', statusCode:400, errors:[{message:'contentType...'}] }
+
+  POST /api/auth/login (6. istek)
+  → 429 { success:false, message:'ThrottlerException: Too Many Requests', statusCode:429 }
+
+Üretilen dosyalar:
+  /home/z/my-project/.env, .env.example, turbo.json, package.json (updated)
+  /home/z/my-project/apps/api/src/{env.ts, app.module.ts, main.ts,
+                                  prisma/{prisma.module,prisma.service}.ts,
+                                  common/{errors,global-exception.filter,response.interceptor,
+                                          request-logger.middleware,roles.decorator,roles.guard,
+                                          ownership.guard,email.service,index}.ts,
+                                  auth/{auth.module,auth.service,auth.controller,jwt.strategy,
+                                         refresh-token.store,password-reset.store,dto}.ts,
+                                  auth/guards/jwt-auth.guard.ts,
+                                  uploads/{uploads.module,uploads.service,uploads.controller,dto}.ts}
+  /home/z/my-project/apps/api/prisma/seed.ts
+  /home/z/my-project/apps/api/scripts/verify-faz1.js
+  /home/z/my-project/apps/web/{package.json, tsconfig.json, next.config.js,
+                              src/app/{layout,page,globals.css}.tsx,
+                              src/app/{login,register}/page.tsx,
+                              src/lib/auth.ts}
+  /home/z/my-project/scripts/run-faz1-tests.sh
+
+Komutlar:
+  npm run dev:api        — API'yi 3000 portunda başlat
+  npm run dev:web        — Web'i 3001 portunda başlat
+  npm run db:seed        — Seed script (idempotent)
+  npm run verify:faz1    — Faz 1 doğrulama betiği (API ayakta olmalı)
+  bash scripts/run-faz1-tests.sh — API'yi başlatıp test edip kapatan tek komut
+
+Sonraki faz (Faz 2) için hazır:
+  - Public endpoint'ler (cities, categories, services list/detail)
+  - Provider self-service (hizmet CRUD, fiyat, takvim)
+  - Kullanıcı rezervasyon öncesi stok kontrolü

@@ -1,6 +1,6 @@
 {
   "name": "turizm-pazaryeri",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Turizm sektörüne yönelik hizmet pazaryeri platformu - monorepo",
   "workspaces": [
@@ -10,21 +10,29 @@
     "packages/shared"
   ],
   "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
     "build:shared": "npm run build -w @turizm-pazaryeri/shared",
     "dev:api": "npm run dev -w @turizm-pazaryeri/api",
     "dev:web": "npm run dev -w @turizm-pazaryeri/web",
     "db:migrate": "npm run migrate:dev -w @turizm-pazaryeri/api && npm run sync:prisma-client",
     "db:studio": "npm run db:studio -w @turizm-pazaryeri/api",
     "db:generate": "npm run db:generate -w @turizm-pazaryeri/api && npm run sync:prisma-client",
+    "db:seed": "npm run seed -w @turizm-pazaryeri/api",
     "sync:prisma-client": "cp -rf apps/api/node_modules/.prisma/client/* node_modules/.prisma/client/ 2>/dev/null || true",
-    "verify:faz0": "node apps/api/scripts/verify-faz0.js"
+    "verify:faz0": "node apps/api/scripts/verify-faz0.js",
+    "verify:faz1": "node apps/api/scripts/verify-faz1.js"
   },
   "engines": {
     "node": ">=18.18.0"
   },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
   "allowScripts": {
     "prisma@5.22.0": true,
     "@prisma/client@5.22.0": true,
-    "@prisma/engines@5.22.0": true
+    "@prisma/engines@5.22.0": true,
+    "@nestjs/core@10.4.22": true
   }
 }

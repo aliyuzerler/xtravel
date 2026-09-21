@@ -3,10 +3,13 @@
     "target": "ES2021",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "declaration": true,
+    "declaration": false,
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -15,11 +18,8 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "baseUrl": ".",
-    "paths": {
-      "@turizm-pazaryeri/shared": ["../../packages/shared/src"],
-      "@turizm-pazaryeri/shared/*": ["../../packages/shared/src/*"]
-    }
+    "paths": {}
   },
-  "include": ["src/**/*", "prisma/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "prisma/seed.ts"]
 }
