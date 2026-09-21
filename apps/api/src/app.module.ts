@@ -14,6 +14,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { ReportsModule } from './reports/reports.module';
 import { ChatModule } from './chat/chat.module';
+import { HealthModule } from './health/health.module';
 import {
   GlobalExceptionFilter,
   RequestLoggerMiddleware,
@@ -37,6 +38,7 @@ import { APP_FILTER } from '@nestjs/core';
     FavoritesModule,
     ReportsModule,
     ChatModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

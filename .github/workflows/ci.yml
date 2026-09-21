@@ -1,0 +1,205 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+
+env:
+  NODE_VERSION: '20'
+  DATABASE_URL: 'file:/tmp/test.db'
+
+jobs:
+  # ===========================================================================
+  # LINT + TYPE CHECK + UNIT TEST
+  # ===========================================================================
+  lint-test:
+    name: Lint + Type Check + Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build shared package
+        run: npm run build:shared
+
+      - name: Generate Prisma client
+        run: cd apps/api && npx prisma generate
+
+      - name: Type check API
+        run: cd apps/api && npx tsc --noEmit
+
+      - name: Type check Web
+        run: cd apps/web && npx tsc --noEmit
+
+      - name: Type check Mobile
+        run: cd apps/mobile && npx tsc --noEmit
+
+      - name: Run Faz-0 verification
+        run: node apps/api/scripts/verify-faz0.js
+        env:
+          DATABASE_URL: 'file:/tmp/test.db'
+        continue-on-error: true # Faz-0 SQLite üretim DB gerektirir
+
+  # ===========================================================================
+  # SECURITY TESTS
+  # ===========================================================================
+  security-tests:
+    name: Security Tests (IDOR, Auth, Rate Limit)
+    runs-on: ubuntu-latest
+    needs: lint-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build shared
+        run: npm run build:shared
+
+      - name: Generate Prisma
+        run: cd apps/api && npx prisma generate && npx prisma migrate deploy
+        env:
+          DATABASE_URL: 'file:/tmp/security.db'
+
+      - name: Seed database
+        run: cd apps/api && npx ts-node prisma/seed.ts
+        env:
+          DATABASE_URL: 'file:/tmp/security.db'
+
+      - name: Start API in background
+        run: |
+          cd apps/api && nohup npx ts-node --transpile-only src/main.ts > /tmp/api.log 2>&1 &
+          sleep 8
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/cities
+
+      - name: Run security tests
+        run: |
+          cd tests/security && npm install
+          npx playwright install --with-deps chromium
+          npx playwright test --reporter=list
+        env:
+          API_URL: 'http://localhost:3000/api'
+
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: tests/security/playwright-report/
+
+  # ===========================================================================
+  # E2E TESTS
+  # ===========================================================================
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: security-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build shared
+        run: npm run build:shared
+
+      - name: Generate Prisma
+        run: cd apps/api && npx prisma generate && npx prisma migrate deploy
+        env:
+          DATABASE_URL: 'file:/tmp/e2e.db'
+
+      - name: Seed database
+        run: cd apps/api && npx ts-node prisma/seed.ts
+        env:
+          DATABASE_URL: 'file:/tmp/e2e.db'
+
+      - name: Start API
+        run: |
+          cd apps/api && nohup npx ts-node --transpile-only src/main.ts > /tmp/api.log 2>&1 &
+          sleep 8
+
+      - name: Start Web
+        run: |
+          cd apps/web && nohup npm run dev > /tmp/web.log 2>&1 &
+          sleep 12
+
+      - name: Run Playwright E2E
+        run: |
+          cd tests/e2e && npm install
+          npx playwright install --with-deps chromium
+          npx playwright test --reporter=list
+        env:
+          API_URL: 'http://localhost:3000/api'
+          WEB_URL: 'http://localhost:3001'
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: tests/e2e/playwright-report/
+
+  # ===========================================================================
+  # BUILD (production artifacts)
+  # ===========================================================================
+  build:
+    name: Build Production Artifacts
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install
+        run: npm install --legacy-peer-deps
+
+      - name: Build shared
+        run: npm run build:shared
+
+      - name: Build API
+        run: cd apps/api && npx tsc
+
+      - name: Build Web
+        run: cd apps/web && npm run build
+        env:
+          NEXT_PUBLIC_SITE_URL: 'https://turizmpazaryeri.com'
+          API_BASE_URL: 'https://api.turizmpazaryeri.com'
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-dist
+          path: apps/api/dist/
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/.next/
