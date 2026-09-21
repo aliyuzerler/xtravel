@@ -1,2 +1,52 @@
-skills/
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+db/*.db
+db/*.db-journal
+db/*.db-wal
+db/*.db-shm
+
+# Prisma
+apps/api/prisma/migrations/dev.db*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Skills (internal)
+skills/
+
+# Uploads (will be configured in later phases)
+upload/
+
+# Mobile (Expo)
+.expo/
+*.apk
+*.ipa
+
+# Test coverage
+coverage/
+.nyc_output/

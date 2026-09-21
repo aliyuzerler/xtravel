@@ -1,0 +1,15 @@
+{
+  "name": "@turizm-pazaryeri/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js 14+ web uygulaması (Admin + Sağlayıcı + Kullanıcı) — Faz 1'de doldurulacak",
+  "scripts": {
+    "dev": "echo 'Faz 1'de Next.js kurulacak'",
+    "build": "echo 'Faz 1'de Next.js kurulacak'",
+    "start": "echo 'Faz 1'de Next.js kurulacak'",
+    "lint": "echo 'Faz 1'de ESLint kurulacak'"
+  },
+  "dependencies": {
+    "@turizm-pazaryeri/shared": "*"
+  }
+}

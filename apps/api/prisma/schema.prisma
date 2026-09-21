@@ -1,0 +1,395 @@
+// =============================================================================
+// Turizm Pazaryeri — Prisma Şeması
+// Kaynak: 00-ortak-baglam.txt A3 Veritabanı Şeması
+//
+// NOT (Faz-0 ortam kararı):
+//   - Spec PostgreSQL 15+ hedefliyor; bu sandbox'ta PostgreSQL erişimi yok.
+//   - .env zaten SQLite file URL'si içeriyor (DATABASE_URL=file:.../custom.db).
+//   - Bu şema provider=sqlite ile çalışır. PostgreSQL'e geçişte:
+//       1) provider = "postgresql" yap
+//       2) String + @map yorumlu alanlar native Enum bloklarına dönüştürülür
+//       3) Json alanlar JSONB'ye yükseltilebilir
+//   - Tüm enum değerleri packages/shared/src/enums.ts ile birebir aynı.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// KULLANICILAR
+// -----------------------------------------------------------------------------
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String?  @map("full_name")
+  phone        String?
+  // enum: super_admin | provider | user
+  role         String   @default("user")
+  // enum: active | banned | pending
+  status       String   @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  provider      ServiceProvider?
+  reservations  Reservation[]
+  notifications Notification[]
+  reviews       Review[]
+  favorites     Favorite[]
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+// -----------------------------------------------------------------------------
+// HİZMET SAĞLAYICILAR
+// -----------------------------------------------------------------------------
+model ServiceProvider {
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  companyName String   @map("company_name")
+  taxNumber   String?  @map("tax_number")
+  phone       String?
+  description String?
+  logoUrl     String?  @map("logo_url")
+  // enum: pending | approved | rejected | suspended
+  status      String   @default("pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services Service[]
+
+  @@index([status])
+  @@map("service_providers")
+}
+
+// -----------------------------------------------------------------------------
+// KATEGORİLER
+// -----------------------------------------------------------------------------
+model Category {
+  id        String  @id @default(uuid())
+  name      String
+  slug      String  @unique
+  iconName  String? @map("icon_name")
+  isActive  Boolean @default(true) @map("is_active")
+  sortOrder Int     @default(0) @map("sort_order")
+
+  services Service[]
+
+  @@index([isActive])
+  @@map("categories")
+}
+
+// -----------------------------------------------------------------------------
+// ŞEHİRLER
+// -----------------------------------------------------------------------------
+model City {
+  id       String  @id @default(uuid())
+  name     String
+  slug     String  @unique
+  isActive Boolean @default(true) @map("is_active")
+
+  services Service[]
+
+  @@index([isActive])
+  @@map("cities")
+}
+
+// -----------------------------------------------------------------------------
+// HİZMETLER
+// -----------------------------------------------------------------------------
+model Service {
+  id              String   @id @default(uuid())
+  providerId      String   @map("provider_id")
+  categoryId      String   @map("category_id")
+  cityId          String   @map("city_id")
+  title           String
+  slug            String   @unique
+  description     String?
+  meetingPoint    String?  @map("meeting_point")
+  latitude        Float?
+  longitude       Float?
+  durationHours   Float?   @map("duration_hours")
+  // enum: draft | pending_approval | published | rejected | paused
+  status          String   @default("draft")
+  rejectionReason String?  @map("rejection_reason")
+  isFeatured      Boolean  @default(false) @map("is_featured")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  provider     ServiceProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category     Category          @relation(fields: [categoryId], references: [id])
+  city         City              @relation(fields: [cityId], references: [id])
+  images       ServiceImage[]
+  pricing      ServicePricing[]
+  schedules    ServiceSchedule[]
+  reservations Reservation[]
+  reviews      Review[]
+  favorites    Favorite[]
+
+  // A3 sonundaki zorunlu indeksler
+  @@index([providerId])
+  @@index([cityId, categoryId, status])
+  @@index([isFeatured])
+  @@index([status])
+  @@map("services")
+}
+
+// -----------------------------------------------------------------------------
+// HİZMET GÖRSELLERİ
+// -----------------------------------------------------------------------------
+model ServiceImage {
+  id        String  @id @default(uuid())
+  serviceId String  @map("service_id")
+  imageUrl  String  @map("image_url")
+  sortOrder Int     @default(0) @map("sort_order")
+  isMain    Boolean @default(false) @map("is_main")
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId])
+  @@map("service_images")
+}
+
+// -----------------------------------------------------------------------------
+// FİYAT VARYANTLARI
+// -----------------------------------------------------------------------------
+model ServicePricing {
+  id          String  @id @default(uuid())
+  serviceId   String  @map("service_id")
+  name        String
+  price       Float
+  currency    String  @default("TRY")
+  // enum: per_person | per_group
+  unit        String  @default("per_person")
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  reservations Reservation[]
+
+  @@index([serviceId])
+  @@index([isActive])
+  @@map("service_pricing")
+}
+
+// -----------------------------------------------------------------------------
+// MÜSAİTLİK / TAKVİM SLOTLARI
+// -----------------------------------------------------------------------------
+model ServiceSchedule {
+  id          String   @id @default(uuid())
+  serviceId   String   @map("service_id")
+  startAt     DateTime @map("start_at")
+  endAt       DateTime @map("end_at")
+  capacity    Int
+  bookedCount Int      @default(0) @map("booked_count")
+  // enum: open | closed
+  status      String   @default("open")
+
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  reservations Reservation[]
+
+  // A3: service_schedules: (service_id, start_at)
+  @@index([serviceId, startAt])
+  @@index([status])
+  @@map("service_schedules")
+}
+
+// -----------------------------------------------------------------------------
+// REZERVASYONLAR
+// -----------------------------------------------------------------------------
+model Reservation {
+  id                 String   @id @default(uuid())
+  reservationCode    String   @unique @map("reservation_code")
+  userId             String   @map("user_id")
+  serviceId          String   @map("service_id")
+  scheduleId         String   @map("schedule_id")
+  pricingId          String   @map("pricing_id")
+  participantCount   Int      @map("participant_count")
+  unitPrice          Float    @map("unit_price")
+  totalPrice         Float    @map("total_price")
+  discountAmount     Float    @default(0) @map("discount_amount")
+  couponId           String?  @map("coupon_id")
+  // enum: pending_payment | confirmed | completed | cancelled | refunded
+  status             String   @default("pending_payment")
+  cancellationReason String?  @map("cancellation_reason")
+  contactName        String   @map("contact_name")
+  contactPhone       String   @map("contact_phone")
+  contactEmail       String   @map("contact_email")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service  Service         @relation(fields: [serviceId], references: [id])
+  schedule ServiceSchedule @relation(fields: [scheduleId], references: [id])
+  pricing  ServicePricing  @relation(fields: [pricingId], references: [id])
+  coupon   Coupon?         @relation(fields: [couponId], references: [id])
+  payments Payment[]
+  reviews  Review[]
+
+  // A3: reservations: (user_id), (service_id), (schedule_id), status
+  @@index([userId])
+  @@index([serviceId])
+  @@index([scheduleId])
+  @@index([status])
+  @@index([reservationCode])
+  @@map("reservations")
+}
+
+// -----------------------------------------------------------------------------
+// ÖDEMELER
+// -----------------------------------------------------------------------------
+model Payment {
+  id                    String   @id @default(uuid())
+  reservationId         String   @map("reservation_id")
+  amount                Float
+  currency              String   @default("TRY")
+  // enum: iyzico | paytr | manual
+  provider              String   @default("iyzico")
+  providerTransactionId String?  @map("provider_transaction_id")
+  // enum: initiated | authorized | captured | failed | refunded | partially_refunded
+  status                String   @default("initiated")
+  // SQLite Json tipini desteklemediği için String tutulur;
+  // PG'e geçiste Json/JSONB'ye yükseltilebilir. application katmanında
+  // JSON.parse / JSON.stringify ile yönetilir.
+  rawResponse           String?  @map("raw_response")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  refunds     Refund[]
+
+  // A3: payments: (reservation_id), provider_transaction_id
+  @@index([reservationId])
+  @@index([providerTransactionId])
+  @@index([status])
+  @@map("payments")
+}
+
+// -----------------------------------------------------------------------------
+// İADELER
+// -----------------------------------------------------------------------------
+model Refund {
+  id        String   @id @default(uuid())
+  paymentId String   @map("payment_id")
+  amount    Float
+  reason    String?
+  // enum: pending | completed | failed
+  status    String   @default("pending")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([status])
+  @@map("refunds")
+}
+
+// -----------------------------------------------------------------------------
+// KUPONLAR
+// -----------------------------------------------------------------------------
+model Coupon {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  // enum: percentage | fixed
+  discountType  String   @map("discount_type")
+  discountValue Float    @map("discount_value")
+  minAmount     Float    @default(0) @map("min_amount")
+  validFrom     DateTime @map("valid_from")
+  validTo       DateTime @map("valid_to")
+  usageLimit    Int?     @map("usage_limit")
+  usedCount     Int      @default(0) @map("used_count")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  reservations Reservation[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([validFrom, validTo])
+  @@map("coupons")
+}
+
+// -----------------------------------------------------------------------------
+// BİLDİRİMLER
+// -----------------------------------------------------------------------------
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@map("notifications")
+}
+
+// -----------------------------------------------------------------------------
+// AYARLAR (key-value, JSON değer)
+// -----------------------------------------------------------------------------
+model Setting {
+  key       String   @id
+  // SQLite Json tipini desteklemediği için String tutulur.
+  // PG'e geçiste Json/JSONB'ye yükseltilebilir.
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// -----------------------------------------------------------------------------
+// YORUMLAR (v2 — Faz 7'de implement edilir, şema hazır)
+// -----------------------------------------------------------------------------
+model Review {
+  id            String   @id @default(uuid())
+  serviceId     String   @map("service_id")
+  userId        String   @map("user_id")
+  reservationId String   @map("reservation_id")
+  rating        Int
+  comment       String?
+  // enum: pending | approved | rejected
+  status        String   @default("pending")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  service     Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  // Kullanıcı aynı hizmete yalnızca bir kez yorum yapar
+  @@unique([userId, serviceId])
+  @@index([serviceId])
+  @@index([userId])
+  @@index([status])
+  @@index([rating])
+  @@map("reviews")
+}
+
+// -----------------------------------------------------------------------------
+// FAVORİLER (v2 — Faz 7'de implement edilir, şema hazır)
+// -----------------------------------------------------------------------------
+model Favorite {
+  userId    String   @map("user_id")
+  serviceId String   @map("service_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  // A3: user_id + service_id (composite unique) → composite primary key
+  @@id([userId, serviceId])
+  @@index([serviceId])
+  @@map("favorites")
+}

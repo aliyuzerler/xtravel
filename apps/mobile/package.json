@@ -1,0 +1,13 @@
+{
+  "name": "@turizm-pazaryeri/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React Native (Expo) mobil uygulama — Faz 6'da doldurulacak",
+  "scripts": {
+    "dev": "echo 'Faz 6'da Expo kurulacak'",
+    "start": "echo 'Faz 6'da Expo kurulacak'"
+  },
+  "dependencies": {
+    "@turizm-pazaryeri/shared": "*"
+  }
+}

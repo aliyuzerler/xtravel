@@ -1,0 +1,28 @@
+{
+  "name": "turizm-pazaryeri",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turizm sektörüne yönelik hizmet pazaryeri platformu - monorepo",
+  "workspaces": [
+    "apps/web",
+    "apps/mobile",
+    "apps/api",
+    "packages/shared"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @turizm-pazaryeri/shared",
+    "dev:api": "npm run dev -w @turizm-pazaryeri/api",
+    "dev:web": "npm run dev -w @turizm-pazaryeri/web",
+    "db:migrate": "npm run migrate:dev -w @turizm-pazaryeri/api",
+    "db:studio": "npm run db:studio -w @turizm-pazaryeri/api",
+    "db:generate": "npm run db:generate -w @turizm-pazaryeri/api"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "allowScripts": {
+    "prisma@5.22.0": true,
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true
+  }
+}
