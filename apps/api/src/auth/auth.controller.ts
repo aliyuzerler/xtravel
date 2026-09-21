@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Post,
   Get,
+  Put,
   UseGuards,
   UseInterceptors,
   Req,
@@ -138,5 +139,33 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async me(@Req() req: Express.Request & { user: RequestUser }) {
     return this.authService.me(req.user.sub);
+  }
+
+  /**
+   * PUT /api/auth/me
+   * Kullanıcı profil bilgilerini (ad, telefon) günceller.
+   */
+  @Put('me')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @Req() req: Express.Request & { user: RequestUser },
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(req.user.sub, dto.fullName, dto.phone);
+  }
+
+  /**
+   * POST /api/auth/change-password
+   * Giriş yapmış kullanıcı şifresini değiştirir. Mevcut şifre zorunlu.
+   * Tüm refresh token'lar iptal edilir (diğer cihazlardan çıkış).
+   */
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Req() req: Express.Request & { user: RequestUser },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(req.user.sub, dto.currentPassword, dto.newPassword);
   }
 }

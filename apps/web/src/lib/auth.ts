@@ -12,6 +12,7 @@ export interface StoredUser {
   id: string;
   email: string;
   fullName: string | null;
+  phone: string | null;
   role: UserRole;
   providerId: string | null;
 }

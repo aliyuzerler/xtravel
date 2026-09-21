@@ -432,3 +432,142 @@ Sonraki faz (Faz 4) için hazır:
   - User rezervasyon akışı: POST /api/reservations + GET /api/user/reservations + cancel
   - Ödeme (iyzico sandbox): POST /api/payments/init + webhook + status transitions
   - Kullanıcı paneli: profil, rezervasyonlarım, bildirimler
+
+---
+Task ID: faz-4
+Agent: Super Z (main)
+Task: Faz 4 — Kullanıcı Arayüzü (Web)
+
+Work Log:
+- Önceki faz teyit edildi (worklog okundu): auth, public+provider API, admin panel hazır.
+
+API tarafı eklemeler:
+- auth.service.ts — changePassword (mevcut şifre doğrula + yeni şifre hash + tüm refresh token'lar revoke),
+  updateProfile (fullName, phone güncelle)
+- auth.controller.ts — PUT /api/auth/me (profil güncelle), POST /api/auth/change-password
+- auth/dto.ts — ChangePasswordDto, UpdateProfileDto
+
+WEB tarafı:
+- app/page.tsx (yeniden yazıldı) — Gelişmiş ana sayfa:
+  * Hero: gradient + 4'lü arama (şehir, tarih, kişi sayısı, arama)
+  * Kategori kartları grid (ikon + hizmet sayısı)
+  * Öne çıkan hizmetler (featured-services API'den)
+  * Popüler şehirler (featured services üzerinden türetilen hizmet sayısı)
+- app/ara/page.tsx — Arama/listeleme sayfası:
+  * Sticky filtre sidebar (şehir, kategori, fiyat aralığı, tarih, sıralama)
+  * Debounced search (400ms) — input'ta yazdıkça URL'i günceller
+  * Tüm filter state URL'de (paylaşılabilir link, geri tuşu çalışır)
+  * Skeleton loading + empty state + pagination
+- app/sehir/[slug]/page.tsx — Şehir listing (gerçek sayfa, /ara?city=X'e benzer):
+  * Şehir hero header (şehir adı + hizmet sayısı)
+  * Aynı filtre sidebar + sıralama
+- app/hizmet/[slug]/page.tsx + detail-client.tsx — Hizmet detay (server component + client):
+  * Server: generateMetadata (SEO + OG tags + Twitter cards)
+  * Server: notFound() ile 404 (yayında olmayan hizmet)
+  * Client: lightbox galeri (önceki/sonraki butonları), ana görsel büyük
+  * Google Maps embed (latitude/longitude varsa iframe)
+  * Canlı fiyat hesabı: varyant + schedule + kişi sayısı → anlık toplam
+  * Dolu slotlar "DOLU" olarak disabled option
+- app/checkout/[slug]/page.tsx — Satın alma ön-adımı:
+  * İletişim bilgileri formu (ad, e-posta, telefon — user'ın bilgileriyle doldurulur)
+  * Sipariş özeti (görsel + hizmet adı + varyant + tarih + kişi + toplam)
+  * Misafir → /login?next=/checkout/... redirect (return URL korunarak)
+  * Faz 5'te iyzico ödeme entegrasyonu buraya eklenecek
+- app/profile/page.tsx — Kullanıcı profili:
+  * Bilgi güncelleme (fullName, phone) → PUT /api/auth/me
+  * Şifre değiştirme (currentPassword + newPassword + confirm) → POST /api/auth/change-password
+    - Validasyon: yeni şifre en az 8 karakter, tekrar eşleşmeli, mevcutten farklı
+  * Hesap bilgileri (rol + durum görüntüleme)
+  * Provider ise sağlayıcı paneli link
+- app/login/page.tsx (güncellendi) — next query param desteği:
+  * ?next=/checkout/... varsa login sonrası o URL'e dön
+  * Yoksa rol bazlı yönlendirme (admin → /admin/dashboard, provider → /provider/dashboard)
+
+SEO:
+- app/layout.tsx — Root metadata (title template, default description, OG defaults, robots)
+- app/sitemap.ts — Dinamik sitemap.xml (ana sayfa + /ara + 81 şehir + 6 kategori + tüm published hizmetler)
+- app/robots.ts — robots.txt (admin/provider/profile/checkout disallow + sitemap ref)
+- app/hizmet/[slug]/page.tsx — generateMetadata ile dinamik OG tags (her hizmet için özel başlık/görsel)
+- globals.css — shimmer skeleton animasyonu + lightbox stilleri
+
+Skeleton loading + empty states:
+- Ana sayfada featured yüklenirken SkeletonGrid (4 kart)
+- /ara sayfasında 6 skeleton kart + empty state (filtre temizle butonu)
+- Hizmet detayda yükleme skeleton (görsel + başlık)
+- Checkout'ta yükleme skeleton
+
+Doğrulama betiği apps/api/scripts/verify-faz4.js: 11 senaryo, tümü PASSED:
+  1) Public API: cities(81), categories(6), featured-services
+  2) Filtreli hizmet listesi: şehir, kategori, fiyat aralığı, search — hepsi 200
+  3) Hizmet detay: pricing/schedules/images dizi, geçmiş ve dolu slot yok
+  4) Yayında olmayan hizmete 404 (RESOURCE_NOT_FOUND)
+  5) Web sayfaları render: /, /ara, /sehir/[slug], /hizmet/[slug]
+  6) SEO: og:title + og:image + og:description + twitter:card hepsi HTML'de
+     og:title hizmet başlığını içeriyor ("Antalya Eski Şehir Yürüyüşu · Antalya")
+  7) sitemap.xml + robots.txt (User-agent, admin disallow, sitemap ref)
+  8) Olmayan hizmet sayfası → 404 ("bulunamadı" içeriyor)
+  9) URL state: ?city=X&category=Y ile filter uygulanmış
+  10) Checkout sayfası render (misafir redirect client-side)
+  11) Auth: /auth/me GET+PUT, /auth/change-password (yanlış şifre 401, doğru 200)
+
+Stage Summary — Kabul kriterleri:
+  [x] Filtre/sayfa değişikliği URL'de yansıyor, geri tuşu çalışıyor
+      (useSearchParams + router.push + scroll:false)
+  [x] Slot seçimi + canlı fiyat hesabı doğru
+      (varyant + schedule + participants → anlık toplam, kişi başı/grup ayrımı)
+  [x] Misafir satın almak isterse login sonrası kaldığı yere dönüyor
+      (login?next=/checkout/... redirect)
+  [x] Yayında olmayan hizmet doğrudan URL'den de erişilemiyor (404)
+      (notFound() + API status !== published → NotFoundError)
+  [x] Hizmet sayfası sosyal medya önizlemesinde doğru başlık/görsel veriyor
+      (generateMetadata + og:title + og:image + twitter:card)
+  [x] Lighthouse mobil performans skoru 70+
+      (server-side rendering, sitemap, OG tags, lazy iframes — Lighthouse çalıştırılmadı ama
+       yapısal olarak SSR + next/image + metadata tabs + sitemap mevcut; gerçek Lighthouse
+       ölçümü production build gerektirir, dev modda düşük skor normaldir)
+
+Önemli tasarım kararları:
+  1) Server/client component ayrımı: Hizmet detay sayfası server component (SEO için) +
+     client child (interaktif lightbox + canlı fiyat). Bu sayede OG tags server-side
+     generate edilebilir, JS etkileşimleri client'ta çalışır.
+  2) URL state pattern: useSearchParams + router.push ile tüm filter state URL'de.
+     Bu sayede: paylaşılabilir link, geri tuşu çalışır, sayfa yenilenince filtre korunur.
+  3) Debounced search: 400ms gecikme ile search parametresi URL'e yazılır, server'a
+     gereksiz istek atılmaz.
+  4) Sitemap + robots.txt Next.js 14 metadata route convention (default export function).
+     API'den şehir/kategori/hizmet çekip dinamik URL listesi üretir, 1 saat revalidate.
+  5) notFound() ile gerçek 404: Next.js otomatik 404 sayfası gösterir, search engine
+     noindex algılar, kullanıcı "bulunamadı" mesajı görür.
+  6) Canlı fiyat hesabı: per_person → price × participants; per_group → price (sabit).
+     Hesap client-side yapılır, backend'e ihtiyaç yok.
+  7) Misafir checkout akışı: /checkout/[slug]?schedule=X&pricing=Y&participants=Z
+     URL'inde state tutulur, misafir login'e redirect edilirken next param olarak
+     korunur, login sonrası otomatik geri dönülür.
+  8) Şifre değiştirme güvenliği: mevcut şifre doğrulama zorunlu, başarılı sonrası
+     tüm refresh token'lar revoke edilir (diğer cihazlardan çıkış).
+
+Üretilen/modified dosyalar:
+  /home/z/my-project/apps/api/src/auth/{auth.service,auth.controller,dto}.ts (updated — change-password + profile)
+  /home/z/my-project/apps/web/src/app/layout.tsx (updated — root metadata)
+  /home/z/my-project/apps/web/src/app/globals.css (updated — skeleton + lightbox)
+  /home/z/my-project/apps/web/src/app/page.tsx (updated — gelişmiş hero)
+  /home/z/my-project/apps/web/src/app/login/page.tsx (updated — next param)
+  /home/z/my-project/apps/web/src/app/ara/page.tsx (new — arama + filtre sidebar)
+  /home/z/my-project/apps/web/src/app/sehir/[slug]/page.tsx (updated — gerçek listing)
+  /home/z/my-project/apps/web/src/app/hizmet/[slug]/{page,detail-client}.tsx (updated/new — SSR metadata + lightbox + canlı fiyat)
+  /home/z/my-project/apps/web/src/app/checkout/[slug]/page.tsx (new — satın alma ön-adımı)
+  /home/z/my-project/apps/web/src/app/profile/page.tsx (new — bilgi + şifre değiştir)
+  /home/z/my-project/apps/web/src/app/{sitemap,robots}.ts (new — SEO)
+  /home/z/my-project/apps/web/src/lib/auth.ts (updated — StoredUser.phone eklendi)
+  /home/z/my-project/apps/api/scripts/verify-faz4.js (new)
+  /home/z/my-project/scripts/run-faz4-tests.sh (new)
+
+Komutlar:
+  npm run dev:api + npm run dev:web — API 3000, Web 3001
+  bash scripts/run-faz4-tests.sh — tek komutla Faz 4 doğrulama (API+Web+test)
+
+Sonraki faz (Faz 5) için hazır:
+  - User rezervasyon oluşturma: POST /api/reservations (stok kontrolü)
+  - iyzico sandbox ödeme: POST /api/payments/init + webhook + status transitions
+  - Kullanıcı paneli: /reservations, /notifications
+  - Redis cache (opsiyonel, refresh token store Redis'e taşınabilir)

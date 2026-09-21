@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { setStoredAuth } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextUrl = searchParams.get('next') || '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,11 +35,13 @@ export default function LoginPage() {
           },
           json.data.user,
         );
-        // Rol bazlı yönlendirme
-        if (json.data.user.role === 'super_admin') {
-          router.push('/admin');
+        // Rol bazlı yönlendirme (nextUrl varsa öncelikli)
+        if (nextUrl && nextUrl !== '/') {
+          router.push(nextUrl);
+        } else if (json.data.user.role === 'super_admin') {
+          router.push('/admin/dashboard');
         } else if (json.data.user.role === 'provider') {
-          router.push('/provider');
+          router.push('/provider/dashboard');
         } else {
           router.push('/');
         }
