@@ -1,1 +1,2 @@
-Bir turizm sektörü etkinlik rezervasyon SaaS projesi. 
+Turizm  sektörüne yönelik etkinlik rezervasyon SaaS projesi. 
+
